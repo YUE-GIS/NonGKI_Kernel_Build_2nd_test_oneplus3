@@ -66,7 +66,8 @@ env:
   ROM_TEXT: "lineage-18.1"
 
   PYTHON_VERSION: "3"
-  PACK_METHOD: "AnyKernel3"
+  # MKBOOTIMG = 云端直接用原版 boot.img 重打包，产出可 flash 的 boot.img（无需 magiskboot）
+  PACK_METHOD: "MKBOOTIMG"
   PACK_KMODULES: "false"
 
   # ===== Optional features (全部关闭) =====
