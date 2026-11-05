@@ -129,7 +129,9 @@ jobs:
         shell: bash
         run: |
           cd "$GITHUB_WORKSPACE/device_kernel"
-          python3 "$GITHUB_WORKSPACE/Patches/nomount318/fix_nomount_318.py" NoMount/kernel/src
+          P="$GITHUB_WORKSPACE/Patches/nomount318/fix_nomount_318.py"
+          [ -f "$P" ] || P="/tmp/Patches/nomount318/fix_nomount_318.py"
+          python3 "$P" NoMount/kernel/src
 
       - name: 🚀 Build Process
         uses: ./.github/workflows/build-process
