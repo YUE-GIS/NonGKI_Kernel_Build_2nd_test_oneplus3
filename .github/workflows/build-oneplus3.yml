@@ -1,0 +1,61 @@
+name: Build OnePlus 3
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  # Device
+  DEVICE_NAME: "oneplus_3_cn"
+  DEVICE_CODENAME: "oneplus3"
+
+  # 3.18 内核用 GCC 4.9，不用 Clang
+  CUSTOM_CMDS: ""
+  EXTRA_CMDS: "ARCH=arm64 SUBARCH=arm64"
+
+  KERNEL_SOURCE: "https://github.com/LineageOS/android_kernel_oneplus_msm8996.git"
+  KERNEL_BRANCH: "lineage-18.1"
+
+  CLANG_SOURCE: ""
+  CLANG_BRANCH: ""
+
+  GCC_GNU: false
+  GCC_64_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
+  GCC_64_BRANCH: "android12L-release"
+  GCC_32_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
+  GCC_32_BRANCH: "android12L-release"
+
+  DEFCONFIG_SOURCE: ""
+  DEFCONFIG_NAME: "lineageos_oneplus3_defconfig"
+  DEFCONFIG_ORIGIN_IMAGE: ""
+  DEFCONFIG_FROM_BOOT: false
+
+  # xxksu = backslashxx 版，专门支持老内核（含 3.18）
+  KERNELSU_SOURCE: ""
+  KERNELSU_BRANCH: ""
+  KERNELSU_AUTO_GET: "true"
+  KERNELSU_AUTO_FORK: "xxksu"
+
+  # 一加3 没有 CONFIG_KPROBES，必须走手动 hook
+  KERNELSU_METHOD: "manual"
+
+  # 第一轮建议先 false 跑通 KSU，再改 true 试 SUSFS
+  SUSFS_ENABLE: false
+  SUSFS_FIXED: false
+
+  AK3_SOURCE: "https://github.com/osm0sis/AnyKernel3.git"
+  AK3_BRANCH: "master"
+
+  BOOT_SOURCE: "https://download.lineage.microg.org/oneplus3/lineage-18.1-20260930-microG-oneplus3-boot.img"
+
+  NEED_DTBO: false
+  NEED_SAFE_DTBO: false
+
+  ROM_TEXT: "lineage-18.1"
+
+  PYTHON_VERSION: "3"
+  PACK_METHOD: "AnyKernel3"
+  PACK_KMODULES: "false"
+
+  PATCHES_SOURCE: ""
+  PATCHES_BRANCH: ""
