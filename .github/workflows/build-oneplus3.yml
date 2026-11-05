@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 env:
-  # Device
+  # ===== Device =====
   DEVICE_NAME: "oneplus_3_cn"
   DEVICE_CODENAME: "oneplus3"
 
@@ -30,26 +30,32 @@ env:
   DEFCONFIG_ORIGIN_IMAGE: ""
   DEFCONFIG_FROM_BOOT: false
 
-  # xxksu = backslashxx 版，专门支持老内核（含 3.18）
+  # ===== KernelSU =====
+  # xxksu = backslashxx 版，明确支持 3.x 内核
   KERNELSU_SOURCE: ""
   KERNELSU_BRANCH: ""
   KERNELSU_AUTO_GET: "true"
   KERNELSU_AUTO_FORK: "xxksu"
+  KERNELSU_METHOD: "shell"
 
-  # 一加3 没有 CONFIG_KPROBES，必须走手动 hook
-  KERNELSU_METHOD: "manual"
+  # 3.18 没有 CONFIG_KPROBES，用 syscall hook
+  HOOK_METHOD: "syscall"
 
-  # 第一轮建议先 false 跑通 KSU，再改 true 试 SUSFS
+  # 第一轮先关 SUSFS，跑通 KSU 再开
   SUSFS_ENABLE: false
   SUSFS_FIXED: false
+  SUSFS_FOLDER_FIXED: ""
+  SUSFS_PATCH_FIXED: ""
 
+  # ===== Packing =====
   AK3_SOURCE: "https://github.com/osm0sis/AnyKernel3.git"
   AK3_BRANCH: "master"
-
   BOOT_SOURCE: "https://download.lineage.microg.org/oneplus3/lineage-18.1-20260930-microG-oneplus3-boot.img"
 
   NEED_DTBO: false
   NEED_SAFE_DTBO: false
+  GENERATE_DTB: "false"
+  GENERATE_CHIP: "qcom"
 
   ROM_TEXT: "lineage-18.1"
 
@@ -57,5 +63,72 @@ env:
   PACK_METHOD: "AnyKernel3"
   PACK_KMODULES: "false"
 
+  # ===== Optional features (全部关闭) =====
+  REKERNEL_ENABLE: "false"
+  DROIDSPACES_ENABLE: "false"
+  NOMOUNT_ENABLE: "false"
+  KPM_ENABLE: "false"
+  KPM_INLINE: "false"
+  KPM_KPATCH_NEXT: "false"
+  BASEBAND_GUARD_ENABLE: "false"
+  BASEBAND_GUARD_BOOT: "false"
+
+  # ===== Debug =====
+  BUILD_DEBUGGER: "false"
+  SKIP_PATCH: "false"
+  BUILD_OTHER_CONFIG: "false"
+  FREE_MORE_SPACE: "false"
+
   PATCHES_SOURCE: ""
   PATCHES_BRANCH: ""
+
+jobs:
+  build-kernel:
+    name: Build OnePlus 3 Kernel
+    runs-on: ubuntu-24.04
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+
+    steps:
+      - name: ⏰ Checkout repository
+        uses: actions/checkout@v6
+
+      - name: ⌛️ Compilation environment preparation
+        uses: ./.github/workflows/build-env
+
+      - name: ⚙️ Get necessary tools
+        uses: ./.github/workflows/build-ready
+
+      - name: 🪝 Patch Kernel of SUSFS
+        uses: ./.github/workflows/patch-susfs
+
+      - name: 🔗 Patch for no-kprobe
+        uses: ./.github/workflows/patch-no-kprobe
+
+      - name: 🪛 Extra Kernel Options
+        run: |
+          cd $GITHUB_WORKSPACE/device_kernel
+          # Nothing
+
+      - name: 🧰 Patch Kernel of Re:Kernel
+        uses: ./.github/workflows/patch-rekernel
+
+      - name: 💿 Patch Kernel of Droidspaces
+        uses: ./.github/workflows/patch-droidspaces
+
+      - name: 🔒 Patch Kernel of Baseband Guard
+        uses: ./.github/workflows/patch-baseband-guard
+
+      - name: 🛡️ Patch Kernel of NoMount
+        uses: ./.github/workflows/patch-nomount
+
+      - name: 🚀 Build Process
+        uses: ./.github/workflows/build-process
+
+      - name: 🔩 Pack Process
+        uses: ./.github/workflows/pack-process
+
+      - name: ✏️ Upload Artifacts
+        uses: ./.github/workflows/upload-files
