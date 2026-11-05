@@ -153,6 +153,13 @@ c = sub(c, "        if (fop->iterate) ops->fake_fop.iterate_shared = nm_hijacked
         "        if (fop->iterate_shared) ops->fake_fop.iterate_shared = nm_hijacked_iterate_dir;\n"
         "#endif\n", "guard fop initializer iterate_shared")
 
+# On 3.18 the xattr handler assignments are compiled out, which leaves these
+# two functions unused; the kernel builds with -Werror=unused-function.
+c = sub(c, "static int nm_xattr_get(",
+        "static int __maybe_unused nm_xattr_get(", "mark nm_xattr_get maybe_unused")
+c = sub(c, "static int nm_xattr_set(",
+        "static int __maybe_unused nm_xattr_set(", "mark nm_xattr_set maybe_unused")
+
 open(hp, "w", encoding="utf-8", newline="\n").write(h)
 open(cp, "w", encoding="utf-8", newline="\n").write(c)
 
