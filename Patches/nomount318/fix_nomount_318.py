@@ -31,14 +31,12 @@ COMPAT = r'''
 #include <linux/magic.h>
 #include <linux/uio.h>
 #include <linux/xattr.h>
-#include <linux/spinlock.h>
 #include <asm/compat.h>
 
-/* 3.18 has no DCACHE_OP_REAL and no per-superblock inode-list lock. */
+/* 3.18 has no DCACHE_OP_REAL. */
 #ifndef DCACHE_OP_REAL
 #define DCACHE_OP_REAL 0
 #endif
-static spinlock_t nm_sb_inode_lock;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
 #define in_compat_syscall() is_compat_task()
@@ -121,9 +119,46 @@ c = sub(c,
 
 c = sub(c, "static int __init nomount_init(void)\n{\n",
         "static int __init nomount_init(void)\n{\n"
-        "    mutex_init(&nm_mutex);\n"
-        "    spin_lock_init(&nm_sb_inode_lock);\n",
+        "    mutex_init(&nm_mutex);\n",
         "runtime lock init")
+
+# --- C-class fix: drop the unsafe inode-list walk entirely on 3.18 ---
+# 3.18 guards sb->s_inodes with fs/inode.c's private, non-exported
+# inode_sb_list_lock. A module-private lock would NOT be mutually exclusive
+# with the kernel, so instead we skip the walk. These two functions only run
+# from NM_CLEAR_EXIT (module unload), which never happens for a built-in.
+c = sub(c,
+        "static void nm_clear_dops_sb(struct super_block *sb)\n{\n"
+        "    struct inode *inode;\n",
+        "static void nm_clear_dops_sb(struct super_block *sb)\n{\n"
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)\n"
+        "    struct inode *inode;\n", "guard clear_dops_sb head")
+
+c = sub(c,
+        "    spin_unlock(&sb->s_inode_list_lock);\n}\n\n"
+        "static void nm_restore_superblocks(void)\n",
+        "    spin_unlock(&sb->s_inode_list_lock);\n"
+        "#else\n    (void)sb;\n#endif\n}\n\n"
+        "static void nm_restore_superblocks(void)\n", "guard clear_dops_sb tail")
+
+c = sub(c,
+        "    struct nm_sop *nm_sop, *tmp;\n    struct inode *inode;\n",
+        "    struct nm_sop *nm_sop, *tmp;\n"
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)\n"
+        "    struct inode *inode;\n#endif\n", "guard restore inode var")
+
+c = sub(c,
+        "            spin_lock(&nm_sop->sb->s_inode_list_lock);\n",
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)\n"
+        "            spin_lock(&nm_sop->sb->s_inode_list_lock);\n",
+        "guard restore loop head")
+
+c = sub(c,
+        "            spin_unlock(&nm_sop->sb->s_inode_list_lock);\n"
+        "            smp_store_release(&nm_sop->sb->s_op, nm_sop->orig_sop);\n",
+        "            spin_unlock(&nm_sop->sb->s_inode_list_lock);\n#endif\n"
+        "            smp_store_release(&nm_sop->sb->s_op, nm_sop->orig_sop);\n",
+        "guard restore loop tail")
 
 # --- second wave: errors only reachable after the first wave compiles ---
 n = c.count("->iterate_shared")
@@ -139,11 +174,6 @@ c = sub(c, "            if (proxies[i].fake.set) proxies[i].fake.set = nm_xattr_
         "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)\n"
         "            if (proxies[i].fake.set) proxies[i].fake.set = nm_xattr_set;\n"
         "#endif\n", "guard xattr-set handler assignment")
-
-c, n = re.subn(r"&[A-Za-z0-9_>.\-]*s_inode_list_lock", "&nm_sb_inode_lock", c)
-applied.append("private inode-list lock x%d" % n)
-if n < 4:
-    raise SystemExit("PATCH FAILED: expected >=4 inode-list lock sites, got %d" % n)
 
 # The struct-initializer-style member is '.' not '->', so it survived the
 # earlier replacement. Guard it away; the existing .iterate assignment below
