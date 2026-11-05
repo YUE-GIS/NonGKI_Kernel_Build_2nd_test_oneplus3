@@ -124,6 +124,13 @@ jobs:
       - name: 🛡️ Patch Kernel of NoMount
         uses: ./.github/workflows/patch-nomount
 
+      - name: 🩹 NoMount 3.18 compat
+        if: env.NOMOUNT_ENABLE == 'true'
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE/device_kernel"
+          python3 "$GITHUB_WORKSPACE/Patches/nomount318/fix_nomount_318.py" NoMount/kernel/src
+
       - name: 🚀 Build Process
         uses: ./.github/workflows/build-process
 
