@@ -145,6 +145,14 @@ jobs:
           [ -f "$P" ] || P="/tmp/Patches/nomount318/fix_nomount_318.py"
           python3 "$P" NoMount/kernel/src
 
+      - name: 🔇 Harden kernel fingerprints
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE/device_kernel"
+          P="$GITHUB_WORKSPACE/Patches/nomount318/harden_kernel.py"
+          [ -f "$P" ] || P="/tmp/Patches/nomount318/harden_kernel.py"
+          python3 "$P" . "arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
+
       - name: 🚀 Build Process
         uses: ./.github/workflows/build-process
 
