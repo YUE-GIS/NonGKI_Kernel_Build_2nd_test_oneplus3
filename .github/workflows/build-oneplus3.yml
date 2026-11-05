@@ -8,6 +8,8 @@ env:
   # ===== Device =====
   DEVICE_NAME: "oneplus_3_cn"
   DEVICE_CODENAME: "oneplus3"
+  # Match the stock kernel's uname -r (scripts/setlocalversion reads .scmversion)
+  KERNEL_LOCALVERSION: "-gb2a6b3b56106"
 
   # 3.18 内核用 GCC 4.9，不用 Clang
   CUSTOM_CMDS: ""
@@ -123,6 +125,12 @@ jobs:
 
       - name: 🛡️ Patch Kernel of NoMount
         uses: ./.github/workflows/patch-nomount
+
+      - name: 🏷️ Pin kernel localversion
+        shell: bash
+        run: |
+          printf -- '%s' "$KERNEL_LOCALVERSION" > "$GITHUB_WORKSPACE/device_kernel/.scmversion"
+          echo "[+] localversion pinned to: $(cat "$GITHUB_WORKSPACE/device_kernel/.scmversion")"
 
       - name: 🩹 NoMount 3.18 compat
         if: env.NOMOUNT_ENABLE == 'true'
