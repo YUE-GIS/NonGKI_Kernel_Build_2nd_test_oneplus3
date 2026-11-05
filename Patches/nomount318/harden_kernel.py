@@ -48,7 +48,10 @@ if not os.path.isfile(mk):
 
 s = open(mk, encoding="utf-8").read()
 old = "echo \\#define LINUX_COMPILER \\\"`$CC -v 2>&1 | grep ' version '`\\\""
-new = "echo \\#define LINUX_COMPILER \\\"%s\\\"" % STOCK_COMPILER
+# The stock compiler string contains bare parentheses, which the shell would
+# reject as a syntax error at parse time. Wrap the whole thing in real double
+# quotes and keep the inner ones escaped.
+new = 'echo "#define LINUX_COMPILER \\"%s\\""' % STOCK_COMPILER
 
 if new in s:
     print("[-] LINUX_COMPILER already pinned")
