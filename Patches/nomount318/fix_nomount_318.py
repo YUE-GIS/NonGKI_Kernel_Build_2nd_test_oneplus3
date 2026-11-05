@@ -31,7 +31,14 @@ COMPAT = r'''
 #include <linux/magic.h>
 #include <linux/uio.h>
 #include <linux/xattr.h>
+#include <linux/spinlock.h>
 #include <asm/compat.h>
+
+/* 3.18 has no DCACHE_OP_REAL and no per-superblock inode-list lock. */
+#ifndef DCACHE_OP_REAL
+#define DCACHE_OP_REAL 0
+#endif
+static spinlock_t nm_sb_inode_lock;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
 #define in_compat_syscall() is_compat_task()
@@ -113,8 +120,38 @@ c = sub(c,
         "#endif", "xattr set signature")
 
 c = sub(c, "static int __init nomount_init(void)\n{\n",
-        "static int __init nomount_init(void)\n{\n    mutex_init(&nm_mutex);\n",
-        "runtime mutex init")
+        "static int __init nomount_init(void)\n{\n"
+        "    mutex_init(&nm_mutex);\n"
+        "    spin_lock_init(&nm_sb_inode_lock);\n",
+        "runtime lock init")
+
+# --- second wave: errors only reachable after the first wave compiles ---
+n = c.count("->iterate_shared")
+c = c.replace("->iterate_shared", "->iterate")
+applied.append("nomount.c iterate_shared ->iterate x%d" % n)
+
+c = sub(c, "            if (proxies[i].fake.get) proxies[i].fake.get = nm_xattr_get;\n",
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)\n"
+        "            if (proxies[i].fake.get) proxies[i].fake.get = nm_xattr_get;\n"
+        "#endif\n", "guard xattr-get handler assignment")
+
+c = sub(c, "            if (proxies[i].fake.set) proxies[i].fake.set = nm_xattr_set;\n",
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)\n"
+        "            if (proxies[i].fake.set) proxies[i].fake.set = nm_xattr_set;\n"
+        "#endif\n", "guard xattr-set handler assignment")
+
+c, n = re.subn(r"&[A-Za-z0-9_>.\-]*s_inode_list_lock", "&nm_sb_inode_lock", c)
+applied.append("private inode-list lock x%d" % n)
+if n < 4:
+    raise SystemExit("PATCH FAILED: expected >=4 inode-list lock sites, got %d" % n)
+
+# The struct-initializer-style member is '.' not '->', so it survived the
+# earlier replacement. Guard it away; the existing .iterate assignment below
+# covers kernels < 6.6 (including 3.18).
+c = sub(c, "        if (fop->iterate) ops->fake_fop.iterate_shared = nm_hijacked_iterate_dir;\n",
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)\n"
+        "        if (fop->iterate_shared) ops->fake_fop.iterate_shared = nm_hijacked_iterate_dir;\n"
+        "#endif\n", "guard fop initializer iterate_shared")
 
 open(hp, "w", encoding="utf-8", newline="\n").write(h)
 open(cp, "w", encoding="utf-8", newline="\n").write(c)
