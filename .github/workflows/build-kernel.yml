@@ -142,6 +142,13 @@ jobs:
     uses: ./.github/workflows/build-redmi-note7-aosp-a15.yml
     secrets: inherit
 
+  build-oneplus3-lineage18-a11:
+    name: "OnePlus 3 (LineageOS 18.1 A11)"
+    strategy:
+      fail-fast: true
+    uses: ./.github/workflows/build-oneplus3.yml
+    secrets: inherit
+
   build-redmi-note11pro-5g-aosp-a16:
     name: "Xiaomi Redmi Note 11 Pro 5G (AOSP Based A16)"
     strategy:
