@@ -10,6 +10,10 @@ env:
   DEVICE_CODENAME: "oneplus3"
   # Match the stock kernel's uname -r (scripts/setlocalversion reads .scmversion)
   KERNEL_LOCALVERSION: "-gb2a6b3b56106"
+  # Match the stock kernel build identity read by scripts/mkcompile_h
+  KBUILD_BUILD_TIMESTAMP: "Wed Sep 30 22:18:05 UTC 2026"
+  KBUILD_BUILD_USER: "root"
+  KBUILD_BUILD_HOST: "e21ccc3b0171"
 
   # 3.18 内核用 GCC 4.9，不用 Clang
   CUSTOM_CMDS: ""
