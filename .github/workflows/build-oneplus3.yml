@@ -3,6 +3,12 @@ name: Build OnePlus 3
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      ksu_fork:
+        description: "KernelSU fork to build: xxksu | rsuntk | sukisu | next | bakasu. Leave empty to use the default (xxksu)."
+        required: false
+        default: ""
+        type: string
 
 env:
   # ===== Device =====
@@ -41,7 +47,8 @@ env:
   KERNELSU_SOURCE: ""
   KERNELSU_BRANCH: ""
   KERNELSU_AUTO_GET: "true"
-  KERNELSU_AUTO_FORK: "xxksu"
+  # KERNELSU_AUTO_FORK 定义在 job 级 env（见 build-kernel.job.env），
+  # 这样 workflow_dispatch 的 ksu_fork 输入才能覆盖它。
   KERNELSU_METHOD: "shell"
 
   # 3.18 没有 CONFIG_KPROBES，用 syscall hook
@@ -94,6 +101,10 @@ jobs:
     name: Build OnePlus 3 Kernel
     runs-on: ubuntu-24.04
     env:
+      # 分 KSU 分支编译：dispatch 时填 ksu_fork 覆盖，留空则用 xxksu。
+      # 注意：换分支后 CONFIG_KSU_NOPRINTK 可能不存在（只有 xxksu 有），
+      # harden_kernel.py 会告警并跳过，不会让构建失败。
+      KERNELSU_AUTO_FORK: ${{ github.event.inputs.ksu_fork || 'xxksu' }}
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
@@ -159,6 +170,21 @@ jobs:
 
       - name: 🔩 Pack Process
         uses: ./.github/workflows/pack-process
+
+      - name: 🧭 Tag artifact with KSU fork
+        shell: bash
+        run: |
+          FORK="${{ env.KERNELSU_AUTO_FORK }}"
+          echo "[.] KernelSU fork: $FORK"
+          if [ -z "$PACK_NAME" ]; then
+            echo "[!] PACK_NAME is empty, skip rename"
+            exit 0
+          fi
+          EXT="${PACK_NAME##*.}"
+          STEM="${PACK_NAME%.*}"
+          NEW="${STEM}-KSU-${FORK}.${EXT}"
+          echo "PACK_NAME=$NEW" >> "$GITHUB_ENV"
+          echo "[+] artifact renamed to: $NEW"
 
       - name: ✏️ Upload Artifacts
         uses: ./.github/workflows/upload-files
