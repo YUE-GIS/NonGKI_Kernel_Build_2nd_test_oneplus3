@@ -34,12 +34,19 @@ else:
     ]
     found = [p for p in kconfig_candidates if os.path.isfile(p) and "KSU_NOPRINTK" in open(p, encoding="utf-8", errors="replace").read()]
     if not found:
-        raise SystemExit("FAIL: no KSU Kconfig with KSU_NOPRINTK found, option would be dropped by olddefconfig")
-    if not s.endswith("\n"):
-        s += "\n"
-    s += "# Silence all KernelSU dmesg logging (fingerprint reduction)\nCONFIG_KSU_NOPRINTK=y\n"
-    open(def_p, "w", encoding="utf-8", newline="\n").write(s)
-    print("[+] defconfig += CONFIG_KSU_NOPRINTK=y   (verified against %s)" % os.path.relpath(found[0], root))
+        # Only backslashxx/KernelSU (xxksu) exposes CONFIG_KSU_NOPRINTK.
+        # rsuntk / SukiSU-Ultra / KernelSU-Next do not, so appending the symbol
+        # would just be dropped by olddefconfig. Degrade to a warning instead of
+        # failing the build, so that switching KSU forks stays possible.
+        print("[!] CONFIG_KSU_NOPRINTK not available in this KSU fork's Kconfig")
+        print("    checked: " + ", ".join(os.path.relpath(p, root) for p in kconfig_candidates))
+        print("    -> skipped. KSU dmesg logging will remain on this build.")
+    else:
+        if not s.endswith("\n"):
+            s += "\n"
+        s += "# Silence all KernelSU dmesg logging (fingerprint reduction)\nCONFIG_KSU_NOPRINTK=y\n"
+        open(def_p, "w", encoding="utf-8", newline="\n").write(s)
+        print("[+] defconfig += CONFIG_KSU_NOPRINTK=y   (verified against %s)" % os.path.relpath(found[0], root))
 
 # ---------------------------------------------------------------- 2. LINUX_COMPILER
 mk = os.path.join(root, "scripts/mkcompile_h")
