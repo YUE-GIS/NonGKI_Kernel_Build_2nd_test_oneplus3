@@ -14,6 +14,12 @@ cp = os.path.join(src, "nomount.c")
 h = open(hp, encoding="utf-8").read()
 c = open(cp, encoding="utf-8").read()
 
+# Idempotency: the oneplus3 fork ships these 3.18 edits baked into kernel/src.
+# Skip when already applied; otherwise patch upstream source as before.
+if "oneplus3 auto-patch" in h:
+    print("NoMount 3.18 patch already applied (baked into fork dev), skip.")
+    sys.exit(0)
+
 applied = []
 
 def sub(text, old, new, tag, count=1):

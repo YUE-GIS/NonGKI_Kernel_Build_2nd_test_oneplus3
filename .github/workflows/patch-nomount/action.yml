@@ -8,7 +8,9 @@ runs:
         shell: bash
         run: |
           cd $GITHUB_WORKSPACE/device_kernel/
-          curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s
+          # oneplus3 fork: dev ships Linux 3.18 compat baked into kernel/src,
+          # and its setup.sh clones this fork (not upstream). Sync upstream manually.
+          curl https://raw.githubusercontent.com/YUE-GIS/nomount_test_oneplus3/refs/heads/dev/kernel/setup.sh | bash -s
 
           echo "CONFIG_NOMOUNT=y" >> ./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
 
