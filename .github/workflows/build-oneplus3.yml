@@ -175,7 +175,17 @@ jobs:
         shell: bash
         run: |
           FORK="${{ env.KERNELSU_AUTO_FORK }}"
-          echo "[.] KernelSU fork: $FORK"
+          KROOT="$GITHUB_WORKSPACE/device_kernel"
+          # 版本溯源。NoMount / KernelSU 都跟分支走、不锁版本，
+          # 每次构建取到的代码可能不同，必须把版本记进日志和产物名。
+          rev() { git -C "$1" rev-parse --short=7 HEAD 2>/dev/null || echo unknown; }
+          NM_REV=$(rev "$KROOT/NoMount")
+          KSU_REV=$(rev "$KROOT/KernelSU")
+          KRN_REV=$(rev "$KROOT")
+          echo "[.] kernel   : $KRN_REV"
+          echo "[.] KernelSU : $KSU_REV"
+          echo "[.] NoMount  : $NM_REV"
+          echo "[.] fork     : $FORK"
           if [ -z "$PACK_NAME" ]; then
             echo "[!] PACK_NAME is empty"; exit 1
           fi
@@ -186,7 +196,7 @@ jobs:
           fi
           EXT="${PACK_NAME##*.}"
           STEM="${PACK_NAME%.*}"
-          NEW="${STEM}-KSU-${FORK}.${EXT}"
+          NEW="${STEM}-KSU-${FORK}-nm${NM_REV}.${EXT}"
           # 必须真的重命名文件：upload-files 是按 PACK_NAME 找文件的，
           # 只改变量会让 upload-artifact 找不到而静默上传 0 个文件。
           mv -f "$PACK_NAME" "$NEW"
