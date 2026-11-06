@@ -177,14 +177,22 @@ jobs:
           FORK="${{ env.KERNELSU_AUTO_FORK }}"
           echo "[.] KernelSU fork: $FORK"
           if [ -z "$PACK_NAME" ]; then
-            echo "[!] PACK_NAME is empty, skip rename"
-            exit 0
+            echo "[!] PACK_NAME is empty"; exit 1
+          fi
+          if [ ! -f "$PACK_NAME" ]; then
+            echo "[!] packaged file not found: $PACK_NAME"
+            ls -la
+            exit 1
           fi
           EXT="${PACK_NAME##*.}"
           STEM="${PACK_NAME%.*}"
           NEW="${STEM}-KSU-${FORK}.${EXT}"
+          # 必须真的重命名文件：upload-files 是按 PACK_NAME 找文件的，
+          # 只改变量会让 upload-artifact 找不到而静默上传 0 个文件。
+          mv -f "$PACK_NAME" "$NEW"
           echo "PACK_NAME=$NEW" >> "$GITHUB_ENV"
           echo "[+] artifact renamed to: $NEW"
+          ls -l "$NEW"
 
       - name: ✏️ Upload Artifacts
         uses: ./.github/workflows/upload-files
