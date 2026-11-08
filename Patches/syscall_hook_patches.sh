@@ -406,3 +406,72 @@ extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void 
     esac
 
 done
+
+# ============================================================
+# 额外修复（< 4.4）：KernelSU userspace_stack_buffer 写坏调用者栈帧
+#
+# su_compat 的 stat/faccessat/execve 钩子要把 "/system/bin/su" 重定向到
+# sh/ksud，字符串得放在调用者的用户栈上。4.4+ 用
+# current_user_stack_pointer()（真正的当前 SP），< 4.4 的 fallback 却用
+# mm->start_stack —— 那是 exec 时的初始栈顶，进程跑起来后 SP 早已下移，
+# 于是 start_stack-32-len 落进调用者的「活栈帧」里，16 字节写下去直接把
+# 局部变量/保存寄存器改掉。
+#
+# 现象：root 身份 `ls -l /system/bin/su`、`stat /system/bin/su` 直接
+# SIGSEGV(139) 且无任何输出；faccessat（test -e）因为栈布局不同可能侥幸不崩。
+if [ "${FIRST_VERSION:-0}" -lt 4 ] || { [ "${FIRST_VERSION:-0}" -eq 4 ] && [ "${SECOND_VERSION:-0}" -lt 4 ]; }; then
+    KSU_UTIL=""
+    for p in KernelSU/kernel/include/util.h drivers/kernelsu/include/util.h; do
+        if [ -f "$p" ]; then KSU_UTIL="$p"; break; fi
+    done
+
+    if [ -z "$KSU_UTIL" ]; then
+        echo "[-] util.h not found under KernelSU/, skip user-stack fix."
+    elif ! grep -q 'current->mm->start_stack' "$KSU_UTIL"; then
+        echo "[.] util.h untouched by this fix (upstream may have changed), skip."
+    else
+        python3 - "$KSU_UTIL" <<'PY'
+import sys
+
+path = sys.argv[1]
+src = open(path, encoding='utf-8').read()
+
+anchor = "\tvolatile unsigned long start_stack = current->mm->start_stack;"
+repl = (
+    "\t/* FIX: mm->start_stack is the exec-time stack top and never moves, so\n"
+    "\t * start_stack-step-len lands inside the caller's live frames as soon as\n"
+    "\t * it has pushed anything -> userland SIGSEGV. Use the live user SP. */\n"
+    "\tvolatile unsigned long start_stack = ({\n"
+    "#if defined(__aarch64__)\n"
+    "\t\t(unsigned long)user_stack_pointer(task_pt_regs(current));\n"
+    "#elif defined(__arm__)\n"
+    "\t\t(unsigned long)task_pt_regs(current)->uregs[13];\n"
+    "#else\n"
+    "\t\t(unsigned long)current->mm->start_stack;\n"
+    "#endif\n"
+    "\t});"
+)
+
+if anchor not in src:
+    print("[-] util.h anchor not found")
+    sys.exit(1)
+
+src = src.replace(anchor, repl, 1)
+
+if '#include <asm/processor.h>' not in src:
+    src = src.replace('#define __KSU_H_UTIL',
+                      '#define __KSU_H_UTIL\n\n#include <asm/ptrace.h>\n#include <asm/processor.h>', 1)
+
+open(path, 'w', encoding='utf-8').write(src)
+print("[+] util.h rewritten")
+PY
+
+        if grep -q 'user_stack_pointer(task_pt_regs(current))' "$KSU_UTIL"; then
+            echo "[+] util.h Patched! userspace_stack_buffer now uses the live user SP."
+        else
+            echo "[-] util.h patch failed: anchor replaced but verify string missing."
+            exit 1
+        fi
+        echo "======================================"
+    fi
+fi
