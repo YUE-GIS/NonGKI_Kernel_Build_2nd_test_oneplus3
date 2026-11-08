@@ -69,11 +69,15 @@ for i in "${patch_files[@]}"; do
             sed -i '/return do_faccessat(dfd, filename, mode);/i \#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif' fs/open.c
         fi
 
-        if grep -q "ksu_handle_faccessat" "fs/open.c"; then
+        # NOTE: counting the function name alone is NOT proof, because the extern
+        # declaration inserted above already contains it. Always count call sites.
+        calls=$(grep -c 'ksu_handle_faccessat(&dfd' "fs/open.c")
+        if [ "$calls" -ge 1 ]; then
             echo "[+] fs/open.c Patched!"
-            echo "[+] Count: $(grep -c "ksu_handle_faccessat" "fs/open.c")"
+            echo "[+] Call sites: $calls"
         else
-            echo "[-] fs/open.c patch failed for unknown reasons, please provide feedback in time."
+            echo "[-] fs/open.c patch failed: no call site inserted (only the extern decl)."
+            exit 1
         fi
 
         echo "======================================"
@@ -102,11 +106,13 @@ for i in "${patch_files[@]}"; do
                 fi
             fi
 
-            if grep -q "ksu_handle_sys_read" "fs/read_write.c"; then
+            calls=$(grep -c 'ksu_handle_sys_read(fd,' "fs/read_write.c")
+            if [ "$calls" -ge 1 ]; then
                 echo "[+] fs/read_write.c Patched!"
-                echo "[+] Count: $(grep -c "ksu_handle_sys_read" "fs/read_write.c")"
+                echo "[+] Call sites: $calls"
             else
-                echo "[-] fs/read_write.c patch failed for unknown reasons, please provide feedback in time."
+                echo "[-] fs/read_write.c patch failed: no call site inserted (only the extern decl)."
+                exit 1
             fi
         else
             echo "[-] KernelSU have no ksu_handle_sys_read, Skipped."
@@ -132,11 +138,26 @@ for i in "${patch_files[@]}"; do
             sed -i '0,/error = cp_new_stat64(\&stat, statbuf);/b; 0,/error = cp_new_stat64(\&stat, statbuf);/b; /error = cp_new_stat64(\&stat, statbuf);/a\#ifdef CONFIG_KSU\n\tksu_handle_fstat64_ret(\&fd, \&statbuf);\n#endif\n' fs/stat.c
         fi
 
-        if grep -q "ksu_handle_stat" "fs/stat.c"; then
+        # the cp_new_stat64 sed above relies on a triple-branch trick to land on the
+        # 3rd occurrence; verify it really landed inside fstat64 (where `fd` exists).
+        if grep -rq --include="*.c" --include="*.h" "ksu_handle_fstat64_ret" "drivers/kernelsu/" >/dev/null 2>&1 \
+           && grep -q 'cp_new_stat64' "fs/stat.c"; then
+            f64=$(grep -c 'ksu_handle_fstat64_ret(&fd' "fs/stat.c")
+            echo "[+] Call sites (fstat64_ret): $f64"
+            if [ "$f64" -lt 1 ]; then
+                echo "[-] fs/stat.c: fstat64 ret hook not inserted, 32-bit stat would break."
+                exit 1
+            fi
+        fi
+
+        stat_calls=$(grep -c 'ksu_handle_stat(&dfd' "fs/stat.c")
+        if [ "$stat_calls" -ge 1 ]; then
             echo "[+] fs/stat.c Patched!"
-            echo "[+] Count: $(grep -c "ksu_handle_stat" "fs/stat.c")"
+            echo "[+] Call sites: $stat_calls"
+            echo "[+] Call sites (newfstat_ret): $(grep -c 'ksu_handle_newfstat_ret(&fd' "fs/stat.c")"
         else
-            echo "[-] fs/stat.c patch failed for unknown reasons, please provide feedback in time."
+            echo "[-] fs/stat.c patch failed: no call site inserted (only the extern decl)."
+            exit 1
         fi
 
         echo "======================================"
@@ -152,10 +173,16 @@ for i in "${patch_files[@]}"; do
             sed -i '/if (unlikely(err)) {/a \#ifdef CONFIG_KSU\n\t\tif (unlikely(strstr(current->comm, "throne_tracker"))) {\n\t\t\terr = -ENOENT;\n\t\t\tgoto out_err;\n\t\t}\n#endif' fs/namei.c
 
             if grep -q "throne_tracker" "fs/namei.c"; then
+                calls=$(grep -c "throne_tracker" "fs/namei.c")
                 echo "[+] fs/namei.c Patched!"
-                echo "[+] Count: $(grep -c "throne_tracker" "fs/namei.c")"
+                echo "[+] Call sites: $calls"
+                # the sed above has no address limit, so every "if (unlikely(err)) {"
+                # in the file gets a copy; more than one means a "goto out_err" may
+                # land in a function without that label -> build error, not silent.
+                [ "$calls" -gt 1 ] && echo "[!] Warning: throne_tracker inserted $calls times, check for missing out_err labels."
             else
                 echo "[-] fs/namei.c patch failed for unknown reasons, please provide feedback in time."
+                exit 1
             fi
         else
             echo "[-] Kernel needn't throne_tracker, Skipped."
@@ -173,7 +200,7 @@ for i in "${patch_files[@]}"; do
 
             if grep -q "ksu_handle_input_handle_event" "drivers/input/input.c"; then
                 echo "[+] drivers/input/input.c Patched!"
-                echo "[+] Count: $(grep -c "ksu_handle_input_handle_event" "drivers/input/input.c")"
+                echo "[+] Call sites: $(grep -c 'ksu_handle_input_handle_event(&type' "drivers/input/input.c")"
             else
                 echo "[-] drivers/input/input.c patch failed for unknown reasons, please provide feedback in time."
             fi
@@ -205,11 +232,13 @@ for i in "${patch_files[@]}"; do
 
             sed -i '/return security_ops->task_fix_setuid(new, old, flags);/i \#ifdef CONFIG_KSU\n\tksu_handle_setuid(new, old);\n\#endif' security/security.c
 
-            if grep -q "ksu_handle_setuid" "security/security.c"; then
+            calls=$(grep -c 'ksu_handle_setuid(new, old)' "security/security.c")
+            if [ "$calls" -ge 1 ]; then
                 echo "[+] security/security.c Patched!"
-                echo "[+] Count: $(grep -c "ksu_handle_setuid" "security/security.c")"
+                echo "[+] Call sites: $calls"
             else
-                echo "[-] security/security.c patch failed for unknown reasons, please provide feedback in time."
+                echo "[-] security/security.c patch failed: no call site inserted (only the extern decl)."
+                exit 1
             fi
         elif grep -rq --include="*.c" --include="*.h" "ksu_inode_rename" "drivers/kernelsu/" >/dev/null 2>&1; then
             echo "[-] KernelSU needn't security.c hooks, Skipped."
@@ -229,11 +258,13 @@ for i in "${patch_files[@]}"; do
             sed -i '/if (!nnp && !nosuid)/i\#ifdef CONFIG_KSU\n    int error;\n    u32 seclen;\n#endif' security/selinux/hooks.c
             sed -i '/return 0; \/\* No change in credentials \*\//a\\n#ifdef CONFIG_KSU\n    if (!ksu_sid)\n        security_secctx_to_secid("u:r:su:s0", strlen("u:r:su:s0"), &ksu_sid);\n\n    error = security_secid_to_secctx(old_tsec->sid, &secdata, &seclen);\n    if (!error) {\n        rc = strcmp("u:r:init:s0", secdata);\n        security_release_secctx(secdata, seclen);\n        if (rc == 0 && new_tsec->sid == ksu_sid)\n            return 0;\n    }\n#endif' security/selinux/hooks.c
 
-            if grep -q "security_secid_to_secctx" "security/selinux/hooks.c"; then
+            calls=$(grep -c 'security_secctx_to_secid("u:r:su:s0"' "security/selinux/hooks.c")
+            if [ "$calls" -ge 1 ]; then
                 echo "[+] security/selinux/hooks.c Patched!"
-                echo "[+] Count: $(grep -c "security_secid_to_secctx" "security/selinux/hooks.c")"
+                echo "[+] Call sites: $calls"
             else
-                echo "[-] security/selinux/hooks.c patch failed for unknown reasons, please provide feedback in time."
+                echo "[-] security/selinux/hooks.c patch failed: credential block not inserted."
+                exit 1
             fi
         else
             echo "[-] Kernel needn't selinux fix, Skipped."
@@ -242,11 +273,12 @@ for i in "${patch_files[@]}"; do
         if [ "$FIRST_VERSION" -lt 4 ] && [ "$SECOND_VERSION" -lt 19 ]; then
             sed -i 's/static struct security_operations selinux_ops/struct security_operations selinux_ops/' security/selinux/hooks.c
 
-            if ! grep -q "static struct security_operations selinux_ops" "security/selinux/hooks.c"; then
-                echo "[+] security/selinux/hooks.c Part II Patched!"
-                echo "[+] Count: $(grep -c "static struct security_operations selinux_ops" "security/selinux/hooks.c")"
+            if grep -q "^struct security_operations selinux_ops" "security/selinux/hooks.c"; then
+                echo "[+] security/selinux/hooks.c Part II Patched! (selinux_ops is now global)"
             else
-                echo "[-] security/selinux/hooks.c patch failed for unknown reasons, please provide feedback in time."
+                echo "[-] security/selinux/hooks.c Part II failed: selinux_ops is still static."
+                echo "[-] Without a global selinux_ops KSU cannot patch LSM hooks on 3.x. Aborting."
+                exit 1
             fi
 
         else
@@ -272,11 +304,13 @@ for i in "${patch_files[@]}"; do
                 sed -i '0,/char \*str = value;/b; /char \*str = value;/a\#ifdef CONFIG_KSU\n    ksu_hide_setprocattr(name, value, size);\n#endif\n' security/selinux/hooks.c
             fi
 
-            if grep -q "ksu_hide_setprocattr" "security/selinux/hooks.c"; then
+            calls=$(grep -c 'ksu_hide_setprocattr(name, value, size)' "security/selinux/hooks.c")
+            if [ "$calls" -ge 1 ]; then
                 echo "[+] security/selinux/hooks.c Part III Patched!"
-                echo "[+] Count: $(grep -c "ksu_hide_setprocattr" "security/selinux/hooks.c")"
+                echo "[+] Call sites: $calls"
             else
-                echo "[-] security/selinux/hooks.c patch failed for unknown reasons, please provide feedback in time."
+                echo "[-] security/selinux/hooks.c Part III failed: no call site inserted."
+                exit 1
             fi
         else
             echo "[-] KernelSU needn't security extra hooks, Skipped."
@@ -292,11 +326,11 @@ for i in "${patch_files[@]}"; do
         elif [ "$FIRST_VERSION" -lt 5 ] && [ "$SECOND_VERSION" -lt 15 ]; then
             sed -i 's/static DEFINE_RWLOCK(policy_rwlock);/DEFINE_RWLOCK(policy_rwlock);/' security/selinux/ss/services.c
 
-            if ! grep -q "static DEFINE_RWLOCK" "security/selinux/ss/services.c"; then
-                echo "[+] security/selinux/hooks.c Patched!"
-                echo "[+] Count: $(grep -c "static DEFINE_RWLOCK" "security/selinux/ss/services.c")"
+            if grep -q "^DEFINE_RWLOCK(policy_rwlock);" "security/selinux/ss/services.c"; then
+                echo "[+] security/selinux/ss/services.c Patched!"
             else
-                echo "[-] security/selinux/hooks.c patch failed for unknown reasons, please provide feedback in time."
+                echo "[-] security/selinux/ss/services.c patch failed: policy_rwlock is still static."
+                exit 1
             fi
         fi
 
@@ -322,11 +356,13 @@ extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void 
 #endif\
 ' kernel/reboot.c
 
-            if grep -q "ksu_handle_sys_reboot" "kernel/reboot.c"; then
+            calls=$(grep -c 'ksu_handle_sys_reboot(magic1' "kernel/reboot.c")
+            if [ "$calls" -ge 1 ]; then
                 echo "[+] kernel/reboot.c Patched!"
-                echo "[+] Count: $(grep -c "ksu_handle_sys_reboot" "kernel/reboot.c")"
+                echo "[+] Call sites: $calls"
             else
-                echo "[-] kernel/reboot.c patch failed for unknown reasons, please provide feedback in time."
+                echo "[-] kernel/reboot.c patch failed: no call site inserted (only the extern decl)."
+                exit 1
             fi
         else
             echo "[-] KernelSU needn't ksu_handle_sys_reboot, Skipped."
@@ -353,11 +389,13 @@ extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void 
                 sed -i '/kuid_t kruid, keuid, ksuid;/a\#ifdef CONFIG_KSU\n\t(void)ksu_handle_setresuid(ruid, euid, suid);\n#endif\n' kernel/sys.c
             fi
 
-            if grep -q "ksu_handle_setresuid" "kernel/sys.c"; then
+            calls=$(grep -c '(void)ksu_handle_setresuid(ruid' "kernel/sys.c")
+            if [ "$calls" -ge 1 ]; then
                 echo "[+] kernel/sys.c Patched!"
-                echo "[+] Count: $(grep -c "ksu_handle_setresuid" "kernel/sys.c")"
+                echo "[+] Call sites: $calls"
             else
-                echo "[-] kernel/sys.c patch failed for unknown reasons, please provide feedback in time."
+                echo "[-] kernel/sys.c patch failed: no call site inserted (only the extern decl)."
+                exit 1
             fi
         else
             echo "[-] KernelSU have no ksu_handle_setresuid, Skipped."
