@@ -45,12 +45,16 @@ for i in "${patch_files[@]}"; do
 
         sed -i '/int do_execve(struct filename \*filename,/i\#ifdef CONFIG_KSU\n__attribute__((hot))\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,\n\t\t\t\tvoid *argv, void *envp, int *flags);\n#endif\n' fs/exec.c
         sed -i '/return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);/i\#ifdef CONFIG_KSU\n\tksu_handle_execveat((int \*)AT_FDCWD, \&filename, \&argv, \&envp, 0);\n#endif\n' fs/exec.c
+        # Linux < 3.19 has no execveat syscall: the wrapper is do_execve_common(), not do_execveat_common().
+        sed -i '/return do_execve_common(filename, argv, envp);/i\#ifdef CONFIG_KSU\n\tksu_handle_execveat((int \*)AT_FDCWD, \&filename, \&argv, \&envp, 0);\n#endif\n' fs/exec.c
 
-        if grep -q "ksu_handle_execveat" "fs/exec.c"; then
+        if grep -q 'ksu_handle_execveat((int \*)AT_FDCWD' "fs/exec.c"; then
             echo "[+] fs/exec.c Patched!"
-            echo "[+] Count: $(grep -c "ksu_handle_execveat" "fs/exec.c")"
+            echo "[+] Call sites: $(grep -c 'ksu_handle_execveat((int \*)AT_FDCWD' "fs/exec.c")"
         else
-            echo "[-] fs/exec.c patch failed for unknown reasons, please provide feedback in time."
+            echo "[-] fs/exec.c patch failed: no call site inserted."
+            echo "[-] su_compat will NOT be able to escalate privileges. Aborting."
+            exit 1
         fi
 
         echo "======================================"
