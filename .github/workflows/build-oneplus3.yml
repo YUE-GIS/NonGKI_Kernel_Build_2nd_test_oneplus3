@@ -141,6 +141,9 @@ jobs:
 
       - name: 🛡️ Patch Kernel of NoMount
         uses: ./.github/workflows/patch-nomount
+        with:
+          # Linux 3.18 compat lives in our NoMount fork's dev branch.
+          setup_script_url: https://raw.githubusercontent.com/YUE-GIS/nomount_test_oneplus3/refs/heads/dev/kernel/setup.sh
 
       - name: 🏷️ Pin kernel localversion
         shell: bash

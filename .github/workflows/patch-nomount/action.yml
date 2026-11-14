@@ -1,5 +1,13 @@
 name: 'Patch NoMount for Kernel.'
 
+# The default follows upstream. Kernels that need a patched NoMount fork
+# (e.g. oneplus3 / Linux 3.18) override it via the calling workflow's `with:`.
+inputs:
+  setup_script_url:
+    description: 'URL of NoMount kernel/setup.sh'
+    required: false
+    default: 'https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/master/kernel/setup.sh'
+
 runs:
   using: 'composite'
   steps:
@@ -8,9 +16,7 @@ runs:
         shell: bash
         run: |
           cd $GITHUB_WORKSPACE/device_kernel/
-          # oneplus3 fork: dev ships Linux 3.18 compat baked into kernel/src,
-          # and its setup.sh clones this fork (not upstream). Sync upstream manually.
-          curl https://raw.githubusercontent.com/YUE-GIS/nomount_test_oneplus3/refs/heads/dev/kernel/setup.sh | bash -s
+          curl -fsSL "${{ inputs.setup_script_url }}" | bash -s
 
           echo "CONFIG_NOMOUNT=y" >> ./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
 
