@@ -60,6 +60,10 @@ env:
   SUSFS_FOLDER_FIXED: ""
   SUSFS_PATCH_FIXED: ""
 
+  # fgetpriority (hide getpriority). VPNHide is NOT available on 3.18 -
+  # its action hard-fails for anything outside 4.9/4.14/4.19/5.4.
+  FGETPRIORITY_ENABLE: "true"
+
   # ===== Packing =====
   AK3_SOURCE: "https://github.com/osm0sis/AnyKernel3.git"
   AK3_BRANCH: "master"
@@ -144,6 +148,9 @@ jobs:
         with:
           # Linux 3.18 compat lives in our NoMount fork's dev branch.
           setup_script_url: https://raw.githubusercontent.com/YUE-GIS/nomount_test_oneplus3/refs/heads/dev/kernel/setup.sh
+
+      - name: ⛔ Patch Kernel of fgetpriority
+        uses: ./.github/workflows/patch-fgetpriority
 
       - name: 🏷️ Pin kernel localversion
         shell: bash
