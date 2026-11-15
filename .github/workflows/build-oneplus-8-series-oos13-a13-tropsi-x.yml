@@ -9,13 +9,13 @@ env:
   DEVICE_NAME : "oneplus_8_cn"
   DEVICE_CODENAME : "instantnoodle"
 
-  CUSTOM_CMDS : "CROSS_COMPILE=aarch64-linux-gnu- NM=llvm-nm OBJDUMP=llvm-objdump STRIP=llvm-strip"
+  CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
   EXTRA_CMDS : ""
 
   KERNEL_SOURCE : "https://github.com/TropsPk/Tropsi_X_Kernel_SM8250.git"
   KERNEL_BRANCH : "Stock"
 
-  CLANG_SOURCE : "https://github.com/ZyCromerZ/Clang/releases/download/10.0.1-20220724-release/Clang-10.0.1-20220724.tar.gz"
+  CLANG_SOURCE : "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12L-release/clang-r416183b.tar.gz"
   CLANG_BRANCH : ""
 
   GCC_GNU : false
@@ -65,6 +65,8 @@ env:
   REKERNEL_ENABLE: "false" # if u need Re:Kernel.
   DROIDSPACES_ENABLE: "false" # if u need Droidspaces or LXC/Docker.
   NOMOUNT_ENABLE: "true" # if u need NoMount.
+  FGETPRIORITY_ENABLE: "false" #if u need hide getpriority.
+  VPNHIDE_ENABLE: "false" #if u need hide vpn status.
 
   HOOK_METHOD: "syscall" # Manual hook method -> syscall.
 
@@ -130,6 +132,12 @@ jobs:
 
       - name: 🛡️ Patch Kernel of NoMount
         uses: ./.github/workflows/patch-nomount
+
+      - name: ⛔ Patch Kernel of fgetpriority
+        uses: ./.github/workflows/patch-fgetpriority
+
+      - name: 🛜 Patch Kernel of VPNHide
+        uses: ./.github/workflows/patch-vpnhide
 
       - name: 🚀 Build Process
         uses: ./.github/workflows/build-process
