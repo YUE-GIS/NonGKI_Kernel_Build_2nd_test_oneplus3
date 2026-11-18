@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       ksu_fork:
-        description: "KernelSU fork to build: xxksu | rsuntk | sukisu | next | bakasu. Leave empty to use the default (xxksu)."
+        description: "KernelSU fork to build: sukisu | xxksu | rsuntk | next | bakasu. Default sukisu (builtin branch bundles SUSFS)."
         required: false
         default: ""
         type: string
@@ -105,10 +105,11 @@ jobs:
     name: Build OnePlus 3 Kernel
     runs-on: ubuntu-24.04
     env:
-      # 分 KSU 分支编译：dispatch 时填 ksu_fork 覆盖，留空则用 xxksu。
+      # 分 KSU 分支编译：dispatch 时填 ksu_fork 覆盖，留空则用 sukisu。
+      # sukisu -> SukiSU-Ultra 的 builtin 分支，源码内置 SUSFS，无需外部 3.18 补丁。
       # 注意：换分支后 CONFIG_KSU_NOPRINTK 可能不存在（只有 xxksu 有），
       # harden_kernel.py 会告警并跳过，不会让构建失败。
-      KERNELSU_AUTO_FORK: ${{ github.event.inputs.ksu_fork || 'xxksu' }}
+      KERNELSU_AUTO_FORK: ${{ github.event.inputs.ksu_fork || 'sukisu' }}
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
@@ -129,10 +130,35 @@ jobs:
       - name: 🔗 Patch for no-kprobe
         uses: ./.github/workflows/patch-no-kprobe
 
-      - name: 🪛 Extra Kernel Options
+      - name: 🪛 Extra Kernel Options (SUSFS on 3.18)
+        shell: bash
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
-          # Nothing
+
+          # SUSFS_ENABLE is intentionally kept false: patch-susfs/action.yml
+          # tries to apply susfs_patch_to_<kver>.patch from susfs4ksu, which has
+          # no 3.18 branch. SukiSU-Ultra's `builtin` branch (selected via the
+          # default fork) already bundles the SUSFS source in-tree, so we only
+          # need to enable its Kconfig options in the defconfig.
+          echo "[+] Enabling in-tree SUSFS options from SukiSU-Ultra builtin"
+          DEFCONFIG="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
+          KSU_KCONFIG="KernelSU/kernel/Kconfig"
+          [ -f "$KSU_KCONFIG" ] || KSU_KCONFIG="drivers/kernelsu/Kconfig"
+          KSU_KCONFIG="$KSU_KCONFIG" python3 \
+            "$GITHUB_WORKSPACE/Patches/susfs318/enable_susfs_318.py" "$DEFCONFIG"
+
+          # path_umount() landed in Linux 5.9. KernelSU needs it to unmount its
+          # own overlays before an app checks for root; on 3.18 module unmount
+          # silently no-ops without it. Backport from upstream.
+          echo "[+] Backporting path_umount() for 3.18"
+          python3 "$GITHUB_WORKSPACE/Patches/susfs318/backport_path_umount.py" .
+
+          # mnt_id_reorder causes bootloop on non-GKI kernels per susfs4ksu
+          # README. Make sure it is off.
+          echo "[+] Ensuring mnt_id_reorder is disabled"
+          if grep -q 'CONFIG_KSU_SUSFS_MNT_ID_REORDER' "$DEFCONFIG"; then
+            sed -i 's/^CONFIG_KSU_SUSFS_MNT_ID_REORDER=y/# CONFIG_KSU_SUSFS_MNT_ID_REORDER is not set/' "$DEFCONFIG"
+          fi
 
       - name: 🧰 Patch Kernel of Re:Kernel
         uses: ./.github/workflows/patch-rekernel
