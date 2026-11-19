@@ -144,14 +144,23 @@ jobs:
           DEFCONFIG="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
           KSU_KCONFIG="KernelSU/kernel/Kconfig"
           [ -f "$KSU_KCONFIG" ] || KSU_KCONFIG="drivers/kernelsu/Kconfig"
-          KSU_KCONFIG="$KSU_KCONFIG" python3 \
-            "$GITHUB_WORKSPACE/Patches/susfs318/enable_susfs_318.py" "$DEFCONFIG"
+          # build-env moves the whole Patches/ tree to /tmp/Patches, so resolve
+          # the script location the same way the NoMount steps do.
+          P="$GITHUB_WORKSPACE/Patches/susfs318/enable_susfs_318.py"
+          [ -f "$P" ] || P="/tmp/Patches/susfs318/enable_susfs_318.py"
+          echo "[.] enable script: $P"
+          [ -f "$P" ] || { echo "[-] enable_susfs_318.py not found in either location"; exit 1; }
+          KSU_KCONFIG="$KSU_KCONFIG" python3 "$P" "$DEFCONFIG"
 
           # path_umount() landed in Linux 5.9. KernelSU needs it to unmount its
           # own overlays before an app checks for root; on 3.18 module unmount
           # silently no-ops without it. Backport from upstream.
           echo "[+] Backporting path_umount() for 3.18"
-          python3 "$GITHUB_WORKSPACE/Patches/susfs318/backport_path_umount.py" .
+          P="$GITHUB_WORKSPACE/Patches/susfs318/backport_path_umount.py"
+          [ -f "$P" ] || P="/tmp/Patches/susfs318/backport_path_umount.py"
+          echo "[.] path_umount script: $P"
+          [ -f "$P" ] || { echo "[-] backport_path_umount.py not found in either location"; exit 1; }
+          python3 "$P" .
 
           # mnt_id_reorder causes bootloop on non-GKI kernels per susfs4ksu
           # README. Make sure it is off.
