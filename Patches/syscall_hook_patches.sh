@@ -226,7 +226,14 @@ for i in "${patch_files[@]}"; do
             sed -i '/ret = security_ops->bprm_check_security(bprm);/i \#ifdef CONFIG_KSU\n\tksu_bprm_check(bprm);\n\#endif' security/security.c
             sed -i '0,/if (unlikely(IS_PRIVATE(old_dentry->d_inode) ||/b; /if (unlikely(IS_PRIVATE(old_dentry->d_inode) ||/i\#ifdef CONFIG_KSU\n\tksu_handle_rename(old_dentry, new_dentry);\n#endif\n' security/security.c
 
-            if ! grep -q "sys_read" "drivers/kernelsu/arch.h" >/dev/null 2>&1; then
+            # Must use the SAME test as the extern-declaration branch above
+            # (whole KSU tree, not arch.h). Using arch.h here disagreed with
+            # the declaration decision on modern forks such as SukiSU-Ultra:
+            # sys_read exists somewhere in the tree -> only 3 externs are
+            # declared -> but arch.h has no sys_read -> the call got inserted
+            # anyway -> "implicit declaration of ksu_file_permission" (-Werror).
+            # SukiSU-Ultra registers file_permission itself via LSM_HOOK_INIT.
+            if ! grep -rq --include="*.c" --include="*.h" "sys_read" "drivers/kernelsu/" >/dev/null 2>&1; then
                 sed -i '/ret = security_ops->file_permission(file, mask);/i\#ifdef CONFIG_KSU\n\tksu_file_permission(file, mask);\n#endif\n' security/security.c
             fi
 
